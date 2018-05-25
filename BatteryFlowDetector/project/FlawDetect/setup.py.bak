@@ -1,0 +1,19 @@
+'''
+Created on 
+@author: qiuyx
+'''
+from distutils.core import setup
+setup(name='FlawDetectClient',
+      version='0.1.0',
+      description='Leqi Battery Flaws Detect Client Lib',
+      author='Qiu Yongxiang',
+      author_email='qiu.yongxiang05@hotmail.com',
+      url = 'None',
+      license = "None - v 1.0",
+      packages= [ 'BatteryFlawClient', 'scan.client', 'scan.commands', 'scan.table', 'scan.util' ],
+      classifiers=[
+    'Development Status :: 3 - Alpha',
+    'Intended Audience :: Developers',
+    'Programming Language :: Python :: 2.7',
+     ]
+    )

@@ -1,0 +1,32 @@
+# the version should be 3.1 or above
+version: "3.1"
+services:
+  rpc_server:
+    image: hongpu/preop:xqx_rpc_server
+    command: python ./main.py rpc_server -g
+    hostname: rpc_server
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    devices:
+      - /dev/nvidia0
+      - /dev/nvidia1
+      - /dev/nvidiactl
+      - /dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools
+    ports:
+      - 7912:7912
+    volumes:
+      - "~/xqx/data/:/data/data/"
+      - "~/xqx/output/:/data/output/"
+      - nvidia_driver_384.98:/usr/local/nvidia:ro
+    networks:
+      - phontonnet
+
+networks:
+  phontonnet:
+volumes:
+  media: null
+  nvidia_driver_384.98:
+    external: true

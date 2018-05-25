@@ -1,0 +1,68 @@
+# coding:utf-8
+import sys
+import os
+import random, cv2
+import os.path as osp
+
+
+from gen_py import DianchiVI
+
+
+from thrift.transport import TSocket
+from thrift.transport import TTransport
+from thrift.protocol import TBinaryProtocol
+from thrift.server import TServer
+
+_HOST = 'localhost'#'192.168.3.188' #
+def detectFlaws(content):
+    transport = TSocket.TSocket(_HOST, 7912)
+
+    # Buffering is critical. Raw sockets are very slow
+    transport = TTransport.TBufferedTransport(transport)
+
+    # Wrap in a protocol
+    protocol = TBinaryProtocol.TBinaryProtocol(transport)
+
+    # Create a client to use the protocol encoder
+    client = DianchiVI.Client(protocol)
+
+    # Connect!
+    transport.open()
+
+    rv = None
+    if not content:
+	print 'Photo read failed!'
+    else:	
+	rv = client.detectFlaws('FakeID', content)
+    	print(rv)
+    # Close!
+    transport.close()
+    return rv
+
+def detectFileFlaws(fileloc):
+    transport = TSocket.TSocket(_HOST, 7912)
+
+    # Buffering is critical. Raw sockets are very slow
+    transport = TTransport.TBufferedTransport(transport)
+
+    # Wrap in a protocol
+    protocol = TBinaryProtocol.TBinaryProtocol(transport)
+
+    # Create a client to use the protocol encoder
+    client = DianchiVI.Client(protocol)
+
+    # Connect!
+    transport.open()
+
+    rv = None
+    with open(fileloc,'rb') as img:
+        content = img.read()
+        if not content:
+                print 'Photo read failed!'
+        else:
+                rv = client.detectFlaws('FakeID', content)
+                print(rv)
+    # Close!
+    transport.close()
+    return rv
+

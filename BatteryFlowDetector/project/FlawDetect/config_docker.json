@@ -1,0 +1,4 @@
+{
+    "py_faster_rcnn_path":"/root/py-faster-rcnn/",
+    "log_path":"/data/output/"
+}
