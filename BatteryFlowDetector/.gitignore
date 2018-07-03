@@ -1,0 +1,10 @@
+.project
+.pydevproject
+*.log
+# Python
+*.pyc
+
+# Generated docs
+doc/_build
+
+*.class

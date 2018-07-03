@@ -9,7 +9,7 @@ Created on Apr 24, 2018
 from ImageConvert import *
 from MVSDK import *
 from collections import deque
-import struct, cv2, logging, json, epics, subprocess, os, time, signal
+import struct, cv2, logging, json, subprocess, os, time, signal
 
 logger = logging.getLogger('camera')
 g_cameraStatusUserInfo = b"statusInfo"
@@ -84,7 +84,7 @@ class Camera(object):
         self.__frameCallbackFunc = callbackFunc(self.onGetFrame)
         self.__frameCallbackFuncEx = callbackFuncEx(self.onGetFrameEx)
         self.imgcontent = None
-	self.stat = 'IDLE'
+        self.stat = 'IDLE'
         self.colortypes = {'aodian' : (27, 28, 240),
                       'tudian' : (41, 179, 18),
                       'zhezhou' : (255, 132, 0),
@@ -623,7 +623,7 @@ class Camera(object):
             # 释放相关资源
             self.streamSource.contents.release(self.streamSource)   
             self.stat = 'ERROR'
-	    return      
+            return      
         else:
             self.logger.debug("Trigger Timed! ")
         
@@ -634,7 +634,7 @@ class Camera(object):
             self.logger.critical("----------------------------------------------------SoftTrigger getFrame fail! timeOut [1000]ms.--------------------------------")
             # 释放相关资源
             self.streamSource.contents.release(self.streamSource) 
- 	    self.stat = 'ERROR'
+            self.stat = 'ERROR'
             return   
         else:
             self.logger.info("SoftTrigger getFrame success BlockId = " + str(frame.contents.getBlockId(frame))) 
@@ -697,12 +697,12 @@ class Camera(object):
                 # 释放相关资源
                 self.streamSource.contents.release(self.streamSource)
                 self.stat = 'ERROR'
-		return 
+                return 
             
             bmpFileHeader.bfSize = sizeof(bmpFileHeader) + sizeof(bmpInfoHeader) + rgbSize.value
             bmpInfoHeader.biBitCount = 24   
         
-	print '!!!!!!!!!!!!!!!!!!!!!!!!!'
+        print '!!!!!!!!!!!!!!!!!!!!!!!!!'
         bmpFileHeader.bfType = 0x4D42 # 文件头类型 'BM'(42 4D)
         bmpFileHeader.bfReserved1 = 0 # 保留字
         bmpFileHeader.bfReserved2 = 0 # 保留字
@@ -762,7 +762,7 @@ class Camera(object):
         
         self.imgcontent = imgcontent
         self.logger.debug("Convert to stream Timed! ")
-	self.stat = 'FINISHED'
+        self.stat = 'FINISHED'
 
 
     def __timeout_command(self, command, timeout):  
@@ -773,7 +773,7 @@ class Camera(object):
         start = time.time()
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  
         while process.poll() is None:  
-            time.sleep(0.01)  
+            time.sleep(0.01)
             now = time.time()  
             if (now - start)> timeout:  
                 os.kill(process.pid, signal.SIGKILL)  
@@ -795,36 +795,34 @@ class Camera(object):
 
 
     def saveImgFile(self, rootDir, productID, results):
-	dm_reader_path = '/opt/BatteryFlawDetector/project/Halcon_QR/dm_reader'
-	if self.position == 'VBottom':
-	    # Create new directory:
-	    dirpath = '{}/{}'.format(rootDir, productID)
-	    self.logger.info("Creating directory: " + dirpath)
-	    os.mkdir('{}/{}'.format(rootDir, productID))
+        dm_reader_path = '/opt/BatteryFlawDetector/project/Halcon_QR/dm_reader'
+        if self.position == 'VBottom':
+            # Create new directory:
+            dirpath = '{}/{}'.format(rootDir, productID)
+            self.logger.info("Creating directory: " + dirpath)
+            os.mkdir('{}/{}'.format(rootDir, productID))
 
-	filepath = '{}/{}/{}-{}.bmp'.format(rootDir, productID, productID, self.position)
+        filepath = '{}/{}/{}-{}.bmp'.format(rootDir, productID, productID, self.position)
         with open(filepath, 'wb+') as imageFile:
             imageFile.writelines(self.imgcontent)
 
         if self.position[0] == 'V':
-	    command = '{} {}'.format(dm_reader_path, filepath)
-	    output = self.__timeout_command(command, 0.5) # set the timeout in seconds
-	    ok, QRCode = self.__getBarString(output)
-	    if ok:
-		print 'Image {}, result: {}'.format(filepath, QRCode)
-		os.mknod('{}/{}/{}'.format(rootDir, productID, QRCode))
-		with open('{}/{}/{}'.format(rootDir, productID, QRCode), 'w') as file:
-		    file.write("During the period of Anit-Ri war, American captain Aimin Shi travelled thousands miles odyssey to China, holding high the international humanitarian flag.")
-	    else:
-		print 'QRCode scanned error: {}'.format(QRCode)
+            command = '{} {}'.format(dm_reader_path, filepath)
+            output = self.__timeout_command(command, 0.5) # set the timeout in seconds
+            ok, QRCode = self.__getBarString(output)
+            if ok:
+                print 'Image {}, result: {}'.format(filepath, QRCode)
+                os.mknod('{}/{}/{}'.format(rootDir, productID, QRCode))
+                with open('{}/{}/{}'.format(rootDir, productID, QRCode), 'w') as file:
+                    file.write("During the period of Anit-Ri war, American captain Aimin Shi travelled thousands miles odyssey to China, holding high the international humanitarian flag.")
+            else:
+                print 'QRCode scanned error: {}'.format(QRCode)
 
-	if results != 'null':
-	    img = cv2.imread(filepath)
+        if results != 'null':
+            img = cv2.imread(filepath)
             newpath = '{}/{}/{}-{}-result.bmp'.format(rootDir, productID, productID, self.position)
             for flaw in json.loads(results):
                 p1, p2 = (flaw[u'bbox'][0], flaw[u'bbox'][1]), (flaw[u'bbox'][2], flaw[u'bbox'][3])
                 cv2.rectangle(img, p1, p2, self.colortypes[flaw["name"]], 3)
                 cv2.imwrite(newpath, img)
             
-    
-
