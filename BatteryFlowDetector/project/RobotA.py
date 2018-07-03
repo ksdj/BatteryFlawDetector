@@ -3,7 +3,7 @@ Created on Apr 24, 2018
 
 @author: qiuyx
 '''
-import socket, epics
+import socket, epics, time
 from Queue import Queue
 from ControlUtils.LeqiLogger import logger
 
@@ -16,7 +16,7 @@ def ctrlCommand(pvname = None, value = None, char_value = None, **kw):
     global cnt
     global cmdQueue
     if cnt > 0:
-        if char_value != 'NULL':
+    	if char_value != 'NULL':
             log.debug('[IOC Command queued]: ' + char_value)
             cmdQueue.put(char_value)
     else:
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     
     sockServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
     sockServer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    log.info('Robot A service start at ' + HOST + str(PORT))
+    log.info('Robot A service start at {}:{}'.format(HOST,str(PORT)))
     sockServer.bind((HOST, PORT))
     sockServer.listen(1)
     
@@ -64,33 +64,37 @@ if __name__ == "__main__":
                 try:
                     if not cmdQueue.empty():
                         cmd = cmdQueue.get()
-                        log.debug("[System command]: " + cmd)
+                        log.debug("[System]: " + cmd)
                         if cmd == 'EXIT':
                             running = False
                             connected = False
                             break
                         elif cmd[1:5] == 'TAIL':
                             sendcnt = conn.send(cmd)
-                            log.debug("[Robot Command]: " + cmd)
+			    log.debug("[Robot]: " + cmd)
                             res = conn.recv(BUF_SIZE)
+			    log.info("[Robot]: " + res)
                             if res: #conn.recv(BUF_SIZE):
-                                log.debug("[Robot Command Return]: " + res)
+				log.debug("[Robot Command Return]: " + res)
                                 PVRobotAStat.put('RELEASED', wait = True)
                             else:
                                 log.error("Releasing ERROR:")
                                 running = False
                                 connected = False
+				PVconnstat.put(0, wait = True)
                                 break
 
-                            #tailed = conn.recv(BUF_SIZE)
-                            res = conn.recv(BUF_SIZE)
+                		    #tailed = conn.recv(BUF_SIZE)
+			    res = conn.recv(BUF_SIZE)
+			    log.info("[Robot]: " + res)
                             if res: #conn.recv(BUF_SIZE):
-                                log.debug("[Robot Command Return]: " + res)
+				log.debug("[Robot Command Return]: " + res)
                                 PVRobotAStat.put('TAILED', wait = True)
                             else:
                                 log.error("Tailing ERROR:")
                                 running = False
                                 connected = False
+				PVconnstat.put(0, wait = True)
                                 break
         
                             log.info("Tailing Complete!")
@@ -99,12 +103,13 @@ if __name__ == "__main__":
                             sendcnt = conn.send(cmd)
                             if conn.recv(BUF_SIZE):
                                 PVRobotAStat.put(states[cmd], wait = True)
-                                log.info("Initializing Sucessfully.")
                             else:
                                 log.error("Initializing ERROR!")
                                 running = False
                                 connected = False
-
+				PVconnstat.put(0, wait = True)
+                            log.info("Initializing Sucessfully.")
+                    
                 except socket.timeout:
                     log.error("Command Execution timeout!")
                     connected = False

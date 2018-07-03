@@ -3,7 +3,7 @@ Created on Apr 24, 2018
 
 @author: qiuyx
 '''
-import socket, epics
+import socket, epics, time
 from Queue import Queue
 from ControlUtils.LeqiLogger import logger
 
@@ -30,8 +30,17 @@ if __name__ == "__main__":
     PVctrlcmd = epics.PV("LQ:ROBOTB:DRI:ctrl_cmd")
     PVconnstat = epics.PV("LQ:ROBOTB:DRI:conn_stat")
     PVRobotBStat = epics.PV("LQ:ROBOTB:DRI:robot_stat")
-    PVTopRes = epics.PV("LQ:ROBOT:DRI:check_top")
-    PVBottomRes = epics.PV("LQ:ROBOT:DRI:check_bottom")
+ 
+    PVVTopCamStat = epics.PV("LQ:CAMERA:DRI:camVTop_stat")
+    PVSTopCamStat = epics.PV("LQ:CAMERA:DRI:camSTop_stat")
+    PVVBottomCamStat = epics.PV("LQ:CAMERA:DRI:camVBottom_stat")
+    PVSBottomCamStat = epics.PV("LQ:CAMERA:DRI:camSBottom_stat")
+
+    PVVTopRes = epics.PV("LQ:ROBOT:DRI:check_VTop")
+    PVSTopRes = epics.PV("LQ:ROBOT:DRI:check_STop")
+    PVVBottomRes = epics.PV("LQ:ROBOT:DRI:check_VBottom")
+    PVSBottomRes = epics.PV("LQ:ROBOT:DRI:check_SBottom")
+    
     PVCheckRes = epics.PV("LQ:ROBOT:DRI:check_result")
     PVctrlcmd.add_callback(ctrlCommand)
     
@@ -47,7 +56,7 @@ if __name__ == "__main__":
     
     sockServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
     sockServer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    log.info("Robot B service start at " + HOST + str(PORT))
+    log.info("Robot B service start at {}:{}".format(HOST, str(PORT)))
     sockServer.bind((HOST, PORT))
     sockServer.listen(1)
     
@@ -73,15 +82,25 @@ if __name__ == "__main__":
                             connected = False
                             break
                         elif cmd == 'CHECK':
-                            while PVTopRes.get() == 'NULL' or PVBottomRes.get() == 'NULL':
+                            while PVVTopRes.get() == 'NULL' or PVSTopRes.get() == 'NULL' or PVVBottomRes.get() == 'NULL' or PVSBottomRes.get() == 'NULL':
                                 None
                             
-                            log.info("Top Result:" + PVTopRes.get())
-                            log.info("Bottom Result:" + PVBottomRes.get())
+                            log.info("Vertical Top Result:" + PVVTopRes.get())
+                            log.info("Slant Top Result:" + PVSTopRes.get())
+                            log.info("Vertical Bottom Result:" + PVVBottomRes.get())
+                            log.info("Slant Bottom Result:" + PVSBottomRes.get())
+
         
-                            isgood = 1 if PVTopRes.get() == 'Good' and PVBottomRes.get() == 'Good' else 0
-                            PVTopRes.put('NULL', wait = True)
-                            PVBottomRes.put('NULL', wait = True)
+                            isgood = 1 if PVVTopRes.get() == 'Good' and PVSTopRes.get() == 'Good' and PVVBottomRes.get() == 'Good' and PVSBottomRes.get() == 'Good' else 0
+                            PVVTopRes.put('NULL', wait = True)
+			    PVSTopRes.put('NULL', wait = True)
+                            PVVBottomRes.put('NULL', wait = True)
+			    PVSBottomRes.put('NULL', wait = True)
+			    PVVTopCamStat.put('NULL', wait = True)
+			    PVSTopCamStat.put('NULL', wait = True)
+			    PVVBottomCamStat.put('NULL', wait = True)
+			    PVSBottomCamStat.put('NULL', wait = True)
+
                             if isgood:
                                 PVCheckRes.put('Good', wait = True)
                             else:
@@ -92,17 +111,19 @@ if __name__ == "__main__":
                             log.info("Check Result:" +  PVCheckRes.get())
                         else:
                             sendcnt = conn.send(cmd)
-                            log.debug("[Robot Command]: " + cmd)
+			    log.debug("[Robot Command]: " + cmd)
                             res = conn.recv(BUF_SIZE)
-                            log.debug("[Robot Command Return]: " + res)
+			    log.debug("[Robot Command Return]: " + res)
                             if res:
                                 PVRobotBStat.put(states[cmd], wait = True)
                             else:
                                 log.error("Robot B " + cmd + "ERROR!")
 
                         #print time.strftime('%Y-%m-%d %H:%M:%S'), "[INFO] Top Result:", PVTopRes.get()
-                        log.info("Top Result:" + PVTopRes.get())
-                        log.info("Bottom Result:" + PVBottomRes.get())
+                        log.info("Vertical Top Result:" + PVVTopRes.get())
+			log.info("Slant Top Result:" + PVSTopRes.get())
+                        log.info("Vertical Bottom Result:" + PVVBottomRes.get())
+                        log.info("Slant Bottom Result:" + PVSBottomRes.get())
                         log.info("Check Result:" + PVCheckRes.get())
                         log.info("RobotB stat:" + PVRobotBStat.get())
                         
