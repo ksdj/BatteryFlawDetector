@@ -1,0 +1,9 @@
+/thrift_client/thrift_client/T0002_YM_20160815100022_01.jpg
+/thrift_client/thrift_client/x64
+*.pyc
+output/*.log
+client_cxx/debug
+client_cxx/release
+*.ncb
+*.suo
+*.user

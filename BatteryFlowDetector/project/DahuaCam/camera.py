@@ -9,11 +9,11 @@ Created on Apr 24, 2018
 from ImageConvert import *
 from MVSDK import *
 from collections import deque
-import struct, cv2, logging, json
+import struct, cv2, logging, json, epics, subprocess, os, time, signal
 
 logger = logging.getLogger('camera')
 g_cameraStatusUserInfo = b"statusInfo"
-camindexes = {'top' : 0, 'bottom' : 1}
+camindexes = {'VTop' : 1, 'VBottom' : 2, 'STop' : 3, 'SBottom' : 0}
 
 # 枚举相机
 def enumCameras():
@@ -84,11 +84,12 @@ class Camera(object):
         self.__frameCallbackFunc = callbackFunc(self.onGetFrame)
         self.__frameCallbackFuncEx = callbackFuncEx(self.onGetFrameEx)
         self.imgcontent = None
+	self.stat = 'IDLE'
         self.colortypes = {'aodian' : (27, 28, 240),
-                           'tudian' : (41, 179, 18),
-                           'zhezhou' : (255, 132, 0),
-                           'guahen' : (39, 179, 255),
-                           'qita' : (188, 67 ,125)}
+                      'tudian' : (41, 179, 18),
+                      'zhezhou' : (255, 132, 0),
+                      'guahen' : (39, 179, 255),
+                      'qita' : (188, 67 ,125)}
         # 发现相机
         
         self.camera = cameraList[camindexes[position]]
@@ -611,7 +612,7 @@ class Camera(object):
         return 0
         
     # Leqi Camera Call:
-    def takephoto(self, filename):
+    def takephoto(self):
         #camera = cameraList[0]
         self.logger.info(str(self.camera) + 'is taking photo.')
     
@@ -621,7 +622,8 @@ class Camera(object):
             self.logger.info("grabOne fail!")
             # 释放相关资源
             self.streamSource.contents.release(self.streamSource)   
-            return -1      
+            self.stat = 'ERROR'
+	    return      
         else:
             self.logger.debug("Trigger Timed! ")
         
@@ -632,7 +634,8 @@ class Camera(object):
             self.logger.critical("----------------------------------------------------SoftTrigger getFrame fail! timeOut [1000]ms.--------------------------------")
             # 释放相关资源
             self.streamSource.contents.release(self.streamSource) 
-            return -1 
+ 	    self.stat = 'ERROR'
+            return   
         else:
             self.logger.info("SoftTrigger getFrame success BlockId = " + str(frame.contents.getBlockId(frame))) 
             self.logger.debug("get frame Timed! ")
@@ -644,7 +647,8 @@ class Camera(object):
             frame.contents.release(frame)
             # 释放相关资源
             self.streamSource.contents.release(self.streamSource)
-            return -1 
+            self.stat = 'ERROR'
+            return 
           
         # 将裸数据图像拷出
         imageSize = frame.contents.getImageSize(frame)
@@ -652,6 +656,7 @@ class Camera(object):
         frameBuff = c_buffer(b'\0', imageSize)
         memmove(frameBuff, c_char_p(buffAddr), imageSize)
       
+        # 将裸数据图像拷出
         # 给转码所需的参数赋值
         convertParams = IMGCNV_SOpenParam()
         convertParams.dataSize = imageSize
@@ -691,11 +696,13 @@ class Camera(object):
                 self.logger.error("image convert fail! errorCode = " + str(nRet))
                 # 释放相关资源
                 self.streamSource.contents.release(self.streamSource)
-                return -1 
+                self.stat = 'ERROR'
+		return 
             
             bmpFileHeader.bfSize = sizeof(bmpFileHeader) + sizeof(bmpInfoHeader) + rgbSize.value
             bmpInfoHeader.biBitCount = 24   
         
+	print '!!!!!!!!!!!!!!!!!!!!!!!!!'
         bmpFileHeader.bfType = 0x4D42 # 文件头类型 'BM'(42 4D)
         bmpFileHeader.bfReserved1 = 0 # 保留字
         bmpFileHeader.bfReserved2 = 0 # 保留字
@@ -712,9 +719,7 @@ class Camera(object):
         bmpInfoHeader.biYPelsPerMeter = 0
         bmpInfoHeader.biClrUsed = 0
         bmpInfoHeader.biClrImportant = 0    
-          
-        #fileName = './image/image.bmp'
-        #imageFile = open(filename, 'wb+') 
+
         imgcontent = ''
         content = deque()
         content.append(struct.pack('H', bmpFileHeader.bfType))
@@ -756,45 +761,70 @@ class Camera(object):
             self.logger.debug("Convert RGB Buff Timed! ")
         
         self.imgcontent = imgcontent
-        #imageFile.close()
-    
-        #print("save " + filename + " success.")
         self.logger.debug("Convert to stream Timed! ")
-        #self.saveImgFile(imgcontent, filename, convertParams, bmpFileHeader, bmpInfoHeader, rgbQuad, frameBuff)
-        #thread.start_new_thread(self.saveImgFile, (imgcontent, filename, convertParams, bmpFileHeader, bmpInfoHeader, rgbQuad, frameBuff))
-        #threading.Thread(target = self.saveImgFile, args = (imgcontent, filename))
+	self.stat = 'FINISHED'
+
+
+    def __timeout_command(self, command, timeout):  
+        """call shell-command and either return its output or kill it 
+        if it doesn't normally exit within timeout seconds then return None"""  
+ 
+        cmd = command.split(" ")  
+        start = time.time()
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  
+        while process.poll() is None:  
+            time.sleep(0.01)  
+            now = time.time()  
+            if (now - start)> timeout:  
+                os.kill(process.pid, signal.SIGKILL)  
+                os.waitpid(-1, os.WNOHANG)  
+                return None
+
+        return process.stdout.read() 
+
+
+    def __getBarString(self, rev):
+        try:
+            rr = rev.split(':')
+            if len(rr)==2 and rr[0]=='DataString':
+                return True, rr[1]
         
-        return imgcontent
+            return False, rev
+        except:
+            return False, "Error happend"
 
 
-    def saveImgFile(self, filepath, results):
+    def saveImgFile(self, rootDir, productID, results):
+	dm_reader_path = '/opt/BatteryFlawDetector/project/Halcon_QR/dm_reader'
+	if self.position == 'VBottom':
+	    # Create new directory:
+	    dirpath = '{}/{}'.format(rootDir, productID)
+	    self.logger.info("Creating directory: " + dirpath)
+	    os.mkdir('{}/{}'.format(rootDir, productID))
+
+	filepath = '{}/{}/{}-{}.bmp'.format(rootDir, productID, productID, self.position)
         with open(filepath, 'wb+') as imageFile:
             imageFile.writelines(self.imgcontent)
-        
-        img = cv2.imread(filepath)
-        
 
-        for flaw in json.loads(results):
-            p1, p2 = (flaw[u'bbox'][0], flaw[u'bbox'][1]), (flaw[u'bbox'][2], flaw[u'bbox'][3])
-            cv2.rectangle(img, p1, p2, self.colortypes[flaw[u'name']], 3)
-            fname, ftype = filepath.split('.')
-            newpath = fname + '-result.' + ftype
-            cv2.imwrite(newpath, img)
+        if self.position[0] == 'V':
+	    command = '{} {}'.format(dm_reader_path, filepath)
+	    output = self.__timeout_command(command, 0.5) # set the timeout in seconds
+	    ok, QRCode = self.__getBarString(output)
+	    if ok:
+		print 'Image {}, result: {}'.format(filepath, QRCode)
+		os.mknod('{}/{}/{}'.format(rootDir, productID, QRCode))
+		with open('{}/{}/{}'.format(rootDir, productID, QRCode), 'w') as file:
+		    file.write("During the period of Anit-Ri war, American captain Aimin Shi travelled thousands miles odyssey to China, holding high the international humanitarian flag.")
+	    else:
+		print 'QRCode scanned error: {}'.format(QRCode)
+
+	if results != 'null':
+	    img = cv2.imread(filepath)
+            newpath = '{}/{}/{}-{}-result.bmp'.format(rootDir, productID, productID, self.position)
+            for flaw in json.loads(results):
+                p1, p2 = (flaw[u'bbox'][0], flaw[u'bbox'][1]), (flaw[u'bbox'][2], flaw[u'bbox'][3])
+                cv2.rectangle(img, p1, p2, self.colortypes[flaw["name"]], 3)
+                cv2.imwrite(newpath, img)
             
     
-    
-'''
-    def saveImgFile(self, imgcontent, filename, convertParams, bmpFileHeader, bmpInfoHeader, rgbQuad, frameBuff):
-        imageFile = open(filename, 'wb+')
-        imageFile.writelines(imgcontent)
-        imageFile.close()
 
-   
-if __name__=="__main__": 
-    nRet = takephoto('./image/image.bmp')
-    if nRet != 0:
-        print("Some Error happend")
-    print("--------- Demo end ---------")
-    # 3s exit
-    time.sleep(3)
-'''

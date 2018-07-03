@@ -12,35 +12,36 @@ from ControlUtils.LeqiLogger import logger
 log = logger('camera','/opt/BatteryFlawDetector/logs/debug.log')
 cnt = 0
 cmdQueue = Queue()
-photoDir = '/home/egcs/BatteryIMG/'
-topcam = Camera('top')
-log.debug('TopCam Object:' + str(topcam))
-bottomcam = Camera('bottom')
-log.debug('BottomCam Object:' + str(bottomcam))
+photoDir = '/home/egcs/BatteryIMG'
+camset = {'VTop' : Camera('VTop'), 'STop' : Camera('STop'), 'VBottom' : Camera('VBottom'), 'SBottom' : Camera('SBottom')}
+log.debug('Vertical TopCam Object:' + str(camset['VTop']))
+log.debug('Slant TopCam Object:' + str(camset['STop']))
+log.debug('Vertical BottomCam Object:' + str(camset['VBottom']))
+log.debug('TopCam Object:' + str(camset['SBottom']))
 
-def takePhoto(position, photoID = 'None'):
-    global topcam
-    global bottomcam
-    ts = time.strftime('%Y%m%d%H%M%S') #time.strftime("%Y%m%d%H%M%S", time.localtime(time.time()))
-    photoloc = photoDir + ts + position + '.bmp'
-    camera = topcam if position == 'top' else bottomcam
-    PVRes = PVTopRes if position == 'top' else PVBottomRes
 
-    img = camera.takephoto(photoloc)
-    if img == -1:
+def takePhoto(position, productID):
+    global camset
+    PVResults = {'VTop' : PVVTopRes, 'STop' : PVSTopRes, 'VBottom': PVVBottomRes, 'SBottom':PVSBottomRes}
+    PVCamsStat = {'VTop' : PVVTopCamStat, 'STop' : PVSTopCamStat, 'VBottom': PVVBottomCamStat, 'SBottom' : PVSBottomCamStat}
+    camera, PVRes, PVStat = camset[position], PVResults[position], PVCamsStat[position]
+    
+
+    camera.takephoto()
+    if camera.stat == 'ERROR':
         log.error(position + ' Camera Error!')
     else:
-        PVCamStat.put(position.upper() + 'PHOTOED', wait = True)
-        log.info("Camera Status: " + PVCamStat.get())
-        results = detectFlaws(img)
+        PVStat.put(position.upper() + 'PHOTOED', wait = True)
+        log.info("Camera Status: " + PVStat.get())
+        results = detectFlaws(camera.imgcontent)
         log.debug("Flaw detect Algorithm complete!")
         if results != 'null':
             PVRes.put('Bad', wait = True)
-            threading.Thread(camera.saveImgFile(photoloc, results)).start()
         else:
             PVRes.put('Good', wait = True)
 
-        log.info(photoID + position + ' Result is: ' +  'Bad!' if results != 'null' else 'Good!')
+        threading.Thread(camera.saveImgFile(photoDir, productID, results)).start()
+        log.info(productID + position + ' Result is: ' +  'Bad!' if results != 'null' else 'Good!')
 
 
 def ctrlCommand(pvname = None, value = None, char_value = None, **kw):
@@ -58,32 +59,44 @@ def ctrlCommand(pvname = None, value = None, char_value = None, **kw):
 if __name__ == "__main__":
 
     #PVs:
-    PVTopRes = epics.PV("LQ:ROBOT:DRI:check_top")
-    PVBottomRes = epics.PV("LQ:ROBOT:DRI:check_bottom")
-    PVCamStat = epics.PV("LQ:CAMERA:DRI:cam_stat")
+    PVVTopRes = epics.PV("LQ:ROBOT:DRI:check_VTop")
+    PVSTopRes = epics.PV("LQ:ROBOT:DRI:check_STop")
+    PVVBottomRes = epics.PV("LQ:ROBOT:DRI:check_VBottom")
+    PVSBottomRes = epics.PV("LQ:ROBOT:DRI:check_SBottom")
+
+    PVVTopCamStat = epics.PV("LQ:CAMERA:DRI:camVTop_stat")
+    PVSTopCamStat = epics.PV("LQ:CAMERA:DRI:camSTop_stat")
+    PVVBottomCamStat = epics.PV("LQ:CAMERA:DRI:camVBottom_stat")
+    PVSBottomCamStat = epics.PV("LQ:CAMERA:DRI:camSBottom_stat")
+
     PVctrlcmd = epics.PV("LQ:CAMERA:DRI:ctrl_cmd")
     PVproductID = epics.PV("LQ:ROBOT:soft:product_ID")
     PVctrlcmd.add_callback(ctrlCommand)
     running = True
     log.info('Ready for taking photo...')
-    productID = ''
     while running:
         while not cmdQueue.empty():
             cmd = cmdQueue.get()
-            log.info("Photo command: " + cmd)
+            log.info("Photo command :" + cmd)
             if cmd != 'EXIT':
                 if cmd[5:] == 'top':
                     #while productID != PVproductID.get():
                     #log.error("Waiting for product " + productID + ' Bottom photo...')
                     #time.sleep(1)
-                    threading.Thread(target = takePhoto, args = ('top', productID)).start()
+                    threading.Thread(target = takePhoto, args = ('VTop', PVproductID.get())).start()
+                    time.sleep(0.3)
+                    threading.Thread(target = takePhoto, args = ('STop', PVproductID.get())).start()
                 elif cmd[5:] == 'bottom':
-                    if PVproductID.get() != 'NULL':
-                        log.info('------------------------------------Product ' + productID + ' checking flow complete!------------------------------------')
-                        productID = 'B' + time.strftime('%Y%m%d%H%M%S')
-                        PVproductID.put(productID)
-                        log.info('------------------------------------Product ' + productID + ' checking flow start!------------------------------------')
-                        threading.Thread(target = takePhoto, args = ('bottom', productID)).start()
+                    #if PVproductID.get() != 'NULL':
+                    log.info('------------------------------------Product ' + PVproductID.get() + ' checking flow complete!------------------------------------')
+                    productID = 'B' + time.strftime('%Y%m%d%H%M%S')
+                    PVproductID.put(productID, wait = True)
+                    log.info('------------------------------------Product ' + PVproductID.get() + ' checking flow start!------------------------------------')
+                    VBottomCam = threading.Thread(target = takePhoto, args = ('VBottom', PVproductID.get()))
+                    VBottomCam.start()
+                    time.sleep(0.08)
+                    SBottomCam = threading.Thread(target = takePhoto, args = ('SBottom', PVproductID.get()))
+                    SBottomCam.start()
                 else:
                     None
 
@@ -91,5 +104,5 @@ if __name__ == "__main__":
             else:
                 running = False
     
-    topcam.close()
-    bottomcam.close()
+    for cam in camset.values():
+        cam.close()
